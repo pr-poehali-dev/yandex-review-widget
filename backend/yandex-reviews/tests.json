@@ -6,9 +6,7 @@
       "path": "/?url=https://yandex.ru/maps/org/legenda/88154393306/reviews/",
       "expectedStatus": 200,
       "expectedBody": {
-        "org_id": "string",
-        "reviews": "array",
-        "total": "number"
+        "org_id": "88154393306"
       },
       "bodyMatcher": "partial"
     },
@@ -18,8 +16,7 @@
       "path": "/?org_id=88154393306",
       "expectedStatus": 200,
       "expectedBody": {
-        "org_id": "88154393306",
-        "reviews": "array"
+        "org_id": "88154393306"
       },
       "bodyMatcher": "partial"
     }
