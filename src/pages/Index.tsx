@@ -75,8 +75,8 @@ const Index = () => {
     <div className="min-h-screen bg-background py-8 px-4">
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold mb-2 bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent">
-            Отзывы клиентов
+          <h1 className="text-4xl font-bold mb-2 text-foreground">
+            Отзывы пациентов<br />Стоматологической клиники "ЛЕГЕНДА"
           </h1>
           <div className="flex items-center justify-center gap-2 mb-2">
             <div className="flex gap-1">
