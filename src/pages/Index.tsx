@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -15,63 +15,40 @@ interface Review {
   images: string[];
 }
 
-const mockReviews: Review[] = [
-  {
-    id: 1,
-    author: 'Анна Смирнова',
-    avatar: '',
-    rating: 5,
-    date: '2024-01-15',
-    text: 'Отличный сервис! Быстрая доставка, качественный продукт. Рекомендую всем своим друзьям и знакомым.',
-    images: ['https://images.unsplash.com/photo-1523275335684-37898b6baf30', 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e']
-  },
-  {
-    id: 2,
-    author: 'Дмитрий Иванов',
-    avatar: '',
-    rating: 4,
-    date: '2024-01-10',
-    text: 'Хорошее качество за свою цену. Есть небольшие замечания, но в целом доволен покупкой.',
-    images: ['https://images.unsplash.com/photo-1572635196237-14b3f281503f']
-  },
-  {
-    id: 3,
-    author: 'Елена Петрова',
-    avatar: '',
-    rating: 5,
-    date: '2024-01-08',
-    text: 'Превосходно! Именно то, что искала. Качество на высоте, упаковка отличная.',
-    images: []
-  },
-  {
-    id: 4,
-    author: 'Михаил Сидоров',
-    avatar: '',
-    rating: 3,
-    date: '2024-01-05',
-    text: 'Средненько. Ожидал большего за эту цену.',
-    images: ['https://images.unsplash.com/photo-1560343090-f0409e92791a']
-  },
-  {
-    id: 5,
-    author: 'Ольга Козлова',
-    avatar: '',
-    rating: 5,
-    date: '2023-12-28',
-    text: 'Великолепный товар! Очень довольна покупкой. Буду заказывать еще.',
-    images: ['https://images.unsplash.com/photo-1491553895911-0055eca6402d', 'https://images.unsplash.com/photo-1542291026-7eec264c27ff']
-  }
-];
+const YANDEX_URL = 'https://yandex.ru/maps/org/legenda/88154393306/reviews/?indoorLevel=1&ll=46.017234%2C51.528380&z=17';
+const API_URL = 'https://functions.poehali.dev/2f1be17c-7fae-4c8f-b196-0ab0f7e57060';
 
 const Index = () => {
+  const [reviews, setReviews] = useState<Review[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedRating, setSelectedRating] = useState<number | null>(null);
   const [sortBy, setSortBy] = useState<'date' | 'rating'>('date');
 
-  const averageRating = (
-    mockReviews.reduce((sum, review) => sum + review.rating, 0) / mockReviews.length
-  ).toFixed(1);
+  useEffect(() => {
+    fetchReviews();
+  }, []);
 
-  const filteredReviews = mockReviews
+  const fetchReviews = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}?url=${encodeURIComponent(YANDEX_URL)}`);
+      const data = await response.json();
+      
+      if (data.reviews && Array.isArray(data.reviews)) {
+        setReviews(data.reviews);
+      }
+    } catch (error) {
+      console.error('Ошибка загрузки отзывов:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const averageRating = reviews.length > 0 ? (
+    reviews.reduce((sum, review) => sum + review.rating, 0) / reviews.length
+  ).toFixed(1) : '0.0';
+
+  const filteredReviews = reviews
     .filter(review => selectedRating === null || review.rating === selectedRating)
     .sort((a, b) => {
       if (sortBy === 'date') {
@@ -80,7 +57,18 @@ const Index = () => {
       return b.rating - a.rating;
     });
 
-  const allImages = mockReviews.flatMap(review => review.images).slice(0, 6);
+  const allImages = reviews.flatMap(review => review.images).slice(0, 6);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <Icon name="Loader2" size={48} className="animate-spin text-primary mx-auto mb-4" />
+          <p className="text-lg text-muted-foreground">Загружаем отзывы...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background py-12 px-4">
@@ -121,7 +109,7 @@ const Index = () => {
                 <Icon name="MessageSquare" className="text-accent" size={32} />
               </div>
             </div>
-            <div className="text-5xl font-bold mb-2">{mockReviews.length}</div>
+            <div className="text-5xl font-bold mb-2">{reviews.length}</div>
             <p className="text-muted-foreground">Всего отзывов</p>
           </Card>
 
@@ -132,7 +120,7 @@ const Index = () => {
               </div>
             </div>
             <div className="text-5xl font-bold mb-2">
-              {mockReviews.filter(r => r.rating >= 4).length}
+              {reviews.filter(r => r.rating >= 4).length}
             </div>
             <p className="text-muted-foreground">Положительных</p>
           </Card>
