@@ -101,7 +101,7 @@ class Yandex_Reviews_Widget {
     
     public function get_settings() {
         $defaults = array(
-            'org_url' => 'https://yandex.ru/maps/org/legenda/88154393306/',
+            'org_url' => 'https://yandex.ru/maps/org/legenda/88154393306/reviews',
             'layout' => '3-column',
             'primary_color' => '#5b5b5b',
             'accent_color' => '#050505',
@@ -136,7 +136,7 @@ class Yandex_Reviews_Widget {
                         <td>
                             <input type="url" id="org_url" name="<?php echo $this->option_name; ?>[org_url]" 
                                    value="<?php echo esc_attr($settings['org_url']); ?>" class="regular-text">
-                            <p class="description">Например: https://yandex.ru/maps/org/your-org/12345/</p>
+                            <p class="description">Например: https://yandex.ru/maps/org/legenda/88154393306/reviews</p>
                         </td>
                     </tr>
                     

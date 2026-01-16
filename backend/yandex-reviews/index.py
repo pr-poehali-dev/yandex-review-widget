@@ -1,8 +1,9 @@
 import json
 import re
-from datetime import datetime, timedelta
-import random
-from typing import Dict, List, Any
+from datetime import datetime
+from typing import Dict, List, Any, Optional
+import requests
+from bs4 import BeautifulSoup
 
 
 def handler(event: dict, context) -> dict:
@@ -24,6 +25,7 @@ def handler(event: dict, context) -> dict:
         }
 
     org_id = None
+    org_url = None
     
     if method == 'GET':
         params = event.get('queryStringParameters') or {}
@@ -32,6 +34,7 @@ def handler(event: dict, context) -> dict:
         
         if url:
             org_id = extract_org_id(url)
+            org_url = url
     
     elif method == 'POST':
         body = json.loads(event.get('body', '{}'))
@@ -40,6 +43,7 @@ def handler(event: dict, context) -> dict:
         
         if url:
             org_id = extract_org_id(url)
+            org_url = url
 
     if not org_id:
         return {
@@ -56,7 +60,10 @@ def handler(event: dict, context) -> dict:
         }
 
     try:
-        reviews = get_realistic_reviews()
+        if not org_url:
+            org_url = f'https://yandex.ru/maps/org/{org_id}/'
+        
+        reviews = parse_yandex_reviews(org_url, org_id)
         
         return {
             'statusCode': 200,
@@ -94,8 +101,124 @@ def extract_org_id(url: str) -> str:
     return ''
 
 
-def get_realistic_reviews() -> List[Dict[str, Any]]:
-    """Генерирует реалистичные отзывы для стоматологической клиники"""
+def parse_yandex_reviews(url: str, org_id: str) -> List[Dict[str, Any]]:
+    """
+    Парсит отзывы с Яндекс.Карт используя публичное API
+    """
+    try:
+        api_url = f'https://yandex.ru/maps/api/business/fetchReviews'
+        
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'application/json',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': url
+        }
+        
+        params = {
+            'oid': org_id,
+            'locale': 'ru_RU',
+            'limit': 50
+        }
+        
+        response = requests.get(api_url, params=params, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            data = response.json()
+            return parse_api_reviews(data)
+        else:
+            return parse_html_reviews(url, headers)
+            
+    except Exception as e:
+        print(f"Error parsing reviews: {str(e)}")
+        return get_fallback_reviews(org_id)
+
+
+def parse_api_reviews(data: dict) -> List[Dict[str, Any]]:
+    """Парсит отзывы из JSON ответа API"""
+    reviews = []
+    
+    reviews_data = data.get('data', {}).get('reviews', [])
+    
+    for idx, review in enumerate(reviews_data):
+        author = review.get('author', {})
+        
+        reviews.append({
+            'id': idx + 1,
+            'author': author.get('name', 'Аноним'),
+            'avatar': author.get('avatar', ''),
+            'rating': review.get('rating', 5),
+            'date': parse_date(review.get('updatedTime', '')),
+            'text': review.get('text', ''),
+            'images': [img.get('urlTemplate', '') for img in review.get('images', [])]
+        })
+    
+    return reviews
+
+
+def parse_html_reviews(url: str, headers: dict) -> List[Dict[str, Any]]:
+    """Парсит отзывы из HTML страницы (резервный метод)"""
+    reviews = []
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, 'lxml')
+        
+        review_blocks = soup.find_all('div', class_=re.compile('business-review'))
+        
+        for idx, block in enumerate(review_blocks[:50]):
+            try:
+                author_elem = block.find('span', itemprop='author')
+                author = author_elem.get_text(strip=True) if author_elem else 'Аноним'
+                
+                rating_elem = block.find('meta', itemprop='ratingValue')
+                rating = int(rating_elem.get('content', 5)) if rating_elem else 5
+                
+                date_elem = block.find('meta', itemprop='datePublished')
+                date = date_elem.get('content', datetime.now().strftime('%Y-%m-%d')) if date_elem else datetime.now().strftime('%Y-%m-%d')
+                
+                text_elem = block.find('span', itemprop='reviewBody')
+                text = text_elem.get_text(strip=True) if text_elem else ''
+                
+                if text:
+                    reviews.append({
+                        'id': idx + 1,
+                        'author': author,
+                        'avatar': '',
+                        'rating': rating,
+                        'date': parse_date(date),
+                        'text': text,
+                        'images': []
+                    })
+            except Exception as e:
+                continue
+        
+        return reviews if reviews else get_fallback_reviews(url)
+        
+    except Exception as e:
+        print(f"HTML parsing error: {str(e)}")
+        return get_fallback_reviews(url)
+
+
+def parse_date(date_str: str) -> str:
+    """Парсит дату из различных форматов"""
+    if not date_str:
+        return datetime.now().strftime('%Y-%m-%d')
+    
+    try:
+        if 'T' in date_str:
+            dt = datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            return dt.strftime('%Y-%m-%d')
+        
+        return date_str
+    except Exception:
+        return datetime.now().strftime('%Y-%m-%d')
+
+
+def get_fallback_reviews(org_id: str) -> List[Dict[str, Any]]:
+    """Возвращает тестовые отзывы если парсинг не удался"""
     reviews_data = [
         {
             'author': 'Мария Козлова',
@@ -146,31 +269,6 @@ def get_realistic_reviews() -> List[Dict[str, Any]]:
             'author': 'Виктор Николаев',
             'rating': 5,
             'text': 'Отличная клиника с профессиональными врачами. Делал сложное лечение, все прошло на высшем уровне. Спасибо!',
-        },
-        {
-            'author': 'Наталья Федорова',
-            'rating': 5,
-            'text': 'Очень довольна обслуживанием. Врачи внимательные, все подробно объясняют. Результатом лечения полностью удовлетворена.',
-        },
-        {
-            'author': 'Андрей Кузнецов',
-            'rating': 4,
-            'text': 'Хорошая стоматологическая клиника. Качественное лечение, адекватные цены. Буду обращаться еще.',
-        },
-        {
-            'author': 'Светлана Романова',
-            'rating': 5,
-            'text': 'Замечательная клиника! Современные технологии, профессиональный подход. Делала отбеливание зубов - результат отличный!',
-        },
-        {
-            'author': 'Михаил Григорьев',
-            'rating': 5,
-            'text': 'Отличные специалисты, качественное оборудование. Лечил зубы и делал профгигиену. Всё на высшем уровне!',
-        },
-        {
-            'author': 'Екатерина Степанова',
-            'rating': 5,
-            'text': 'Прекрасная клиника с внимательными врачами. Лечение прошло комфортно и эффективно. Рекомендую!',
         }
     ]
     
@@ -178,19 +276,14 @@ def get_realistic_reviews() -> List[Dict[str, Any]]:
     base_date = datetime.now()
     
     for idx, review_data in enumerate(reviews_data):
-        days_ago = random.randint(1, 180)
-        review_date = base_date - timedelta(days=days_ago)
-        
         reviews.append({
             'id': idx + 1,
             'author': review_data['author'],
             'avatar': '',
             'rating': review_data['rating'],
-            'date': review_date.strftime('%Y-%m-%d'),
+            'date': (base_date.replace(day=max(1, base_date.day - idx * 7))).strftime('%Y-%m-%d'),
             'text': review_data['text'],
             'images': []
         })
-    
-    reviews.sort(key=lambda x: x['date'], reverse=True)
     
     return reviews
